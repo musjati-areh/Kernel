@@ -36,12 +36,6 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s main || curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
           
-          # Отключаем превращение предупреждений компилятора в ошибки
-          if [ -f Makefile ]; then
-            sed -i 's/-Werror=implicit-function-declaration//g' Makefile
-            sed -i 's/-Werror//g' Makefile
-          fi
-
           # Патчи планировщика (sched.h)
           if [ -f include/trace/events/sched.h ]; then
             sed -i 's/runnable_load_avg/runnable_avg/g' include/trace/events/sched.h
@@ -50,7 +44,7 @@ jobs:
             sed -i '/__entry->isolated/ s/=.*/= 0;/g' include/trace/events/sched.h
           fi
 
-          # Патч sched/debug.c: заглушаем недо-бэкпортированный EEVDF (entity_eligible и cfs_rq_of)
+          # Патч sched/debug.c: заглушаем недо-бэкпортированный EEVDF (entity_eligible)
           if [ -f kernel/sched/debug.c ]; then
             sed -i "s/entity_eligible.*'E' : 'N'/'N'/g" kernel/sched/debug.c
             sed -i "s/entity_eligible(cfs_rq_of(&p->se), &p->se)/0/g" kernel/sched/debug.c
@@ -100,6 +94,7 @@ jobs:
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
+            KCFLAGS="-Wno-error" \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             AR=llvm-ar \
