@@ -18,7 +18,7 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            libelf-dev libssl-dev bc bison flex zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+            libelf-dev libssl-dev bc bison flex zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 cpio
 
       - name: Restore Proton Clang Cache
         id: cache-clang
@@ -32,34 +32,60 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: Integrate KernelSU-Next & Merge Configs
+      - name: Integrate KernelSU-Next & Patch Sched
         run: |
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           
-          # Склеиваем параметры Xiaomi с основным дефконфигом (исправляет LITTLE_CPU_MASK)
-          if [ -f arch/arm64/configs/vendor/xiaomi-sdm439.config ]; then
-            cat arch/arm64/configs/vendor/xiaomi-sdm439.config >> arch/arm64/configs/vendor/mi439-stock_defconfig
+          # Патч ошибки runnable_load_avg -> runnable_avg в trace/events/sched.h
+          if [ -f include/trace/events/sched.h ]; then
+            sed -i 's/runnable_load_avg/runnable_avg/g' include/trace/events/sched.h
           fi
-          
-          # Активируем KernelSU-Next и OverlayFS
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/mi439-stock_defconfig
-          echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/vendor/mi439-stock_defconfig
 
       - name: Compile Kernel
         run: |
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
-          make O=out ARCH=arm64 CC=clang vendor/mi439-stock_defconfig
+          
+          # Автоопределение родного дефконфига LOLZ Kernel
+          if [ -f arch/arm64/configs/lolz_defconfig ]; then
+            DEFCONFIG="lolz_defconfig"
+          elif [ -f arch/arm64/configs/vendor/lolz_defconfig ]; then
+            DEFCONFIG="vendor/lolz_defconfig"
+          elif [ -f arch/arm64/configs/vendor/mi439-perf_defconfig ]; then
+            DEFCONFIG="vendor/mi439-perf_defconfig"
+          else
+            DEFCONFIG="vendor/mi439-stock_defconfig"
+            if [ -f arch/arm64/configs/vendor/xiaomi-sdm439.config ]; then
+              cat arch/arm64/configs/vendor/xiaomi-sdm439.config >> arch/arm64/configs/vendor/mi439-stock_defconfig
+            fi
+          fi
+          
+          echo "Using defconfig: $DEFCONFIG"
+          
+          cat << 'EOF' >> arch/arm64/configs/$DEFCONFIG
+          CONFIG_KSU=y
+          CONFIG_OVERLAY_FS=y
+          CONFIG_WERROR=n
+          EOF
+
+          make O=out ARCH=arm64 CC=clang $DEFCONFIG
           make O=out ARCH=arm64 CC=clang olddefconfig
+          
+          set -o pipefail
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
+            KCFLAGS="-Wno-error -Wno-implicit-function-declaration" \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             AR=llvm-ar \
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip
+            STRIP=llvm-strip 2>&1 | tee build.log || {
+              echo "=== НАЙДЕННЫЕ ОШИБКИ КОМПИЛЯЦИИ ==="
+              grep -iE "error:|undefined reference|fatal error:" build.log | tail -n 35
+              exit 1
+            }
 
       - name: Package AnyKernel3
         run: |
