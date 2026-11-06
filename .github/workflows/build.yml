@@ -7,19 +7,53 @@ on:
 
 jobs:
   build:
-    name: Build Kernel
+    name: Build Kernel (vendor/mi439-stock_defconfig)
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 1
 
-      - name: Install Build Dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            bc bison ca-certificates curl flex gcc git libc6-dev \
-            libssl-dev make python3 libelf-dev zip libarchive-tools
+          sudo apt-get install -y --no-install-recommends             bc bison ca-certificates curl flex gcc git libc6-dev             libssl-dev make python3 libelf-dev zip libarchive-tools             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi cpio
+
+      - name: Clone Proton Clang
+        run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+
+      - name: Setup KernelSU-Next
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/mi439-stock_defconfig
+          echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/vendor/mi439-stock_defconfig
+
+      - name: Compile Kernel
+        run: |
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          make O=out ARCH=arm64 vendor/mi439-stock_defconfig
+          make -j$(nproc --all) O=out             ARCH=arm64             CC=clang             CROSS_COMPILE=aarch64-linux-gnu-             CROSS_COMPILE_ARM32=arm-linux-gnueabi-             AR=llvm-ar             NM=llvm-nm             OBJCOPY=llvm-objcopy             OBJDUMP=llvm-objdump             STRIP=llvm-strip
+
+      - name: Package AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
+          sed -i 's|block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|block=auto;|g' AnyKernel3/anykernel.sh
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+            cp out/arch/arm64/boot/Image.gz AnyKernel3/
+          else
+            cp out/arch/arm64/boot/Image AnyKernel3/
+          fi
+          cd AnyKernel3
+          zip -r9 ../Kernel-KSU-4.19.zip * -x .git README.md *placeholder
+
+      - name: Upload Flashable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-KSU-Flashable
+          path: Kernel-KSU-4.19.zip
