@@ -36,16 +36,22 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           
-          # Патч ошибки runnable_load_avg -> runnable_avg в trace/events/sched.h
+          # Патчи планировщика для LOLZ Kernel 4.19
           if [ -f include/trace/events/sched.h ]; then
+            # 1. Исправление runnable_load_avg -> runnable_avg
             sed -i 's/runnable_load_avg/runnable_avg/g' include/trace/events/sched.h
+            # 2. Исправление ошибки no member named 'cpu_load' in 'struct rq'
+            sed -i '/__entry->cpu_load/ s/=.*/= 0;/g' include/trace/events/sched.h
+            sed -i 's/task_rq(p)->cpu_load\[[0-9]*\]/0/g' include/trace/events/sched.h
+            sed -i 's/task_rq(p)->cpu_load/0/g' include/trace/events/sched.h
+            sed -i 's/rq->cpu_load\[[0-9]*\]/0/g' include/trace/events/sched.h
+            sed -i 's/rq->cpu_load/0/g' include/trace/events/sched.h
           fi
 
       - name: Compile Kernel
         run: |
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           
-          # Автоопределение родного дефконфига LOLZ Kernel
           if [ -f arch/arm64/configs/lolz_defconfig ]; then
             DEFCONFIG="lolz_defconfig"
           elif [ -f arch/arm64/configs/vendor/lolz_defconfig ]; then
