@@ -7,53 +7,72 @@ on:
 
 jobs:
   build:
-    name: Build Kernel (vendor/mi439-stock_defconfig)
+    name: Build Kernel (mi439)
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout Kernel Source
+      - name: Checkout Workflow
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends             bc bison ca-certificates curl flex gcc git libc6-dev             libssl-dev make python3 libelf-dev zip libarchive-tools             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi cpio
+          sudo apt-get install -y --no-install-recommends \
+            bc bison ca-certificates curl flex gcc git libc6-dev \
+            libssl-dev make python3 libelf-dev zip libarchive-tools \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi cpio libkmod-dev
 
       - name: Clone Proton Clang
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: Setup KernelSU-Next
+      - name: Clone LOLZ Kernel Source
         run: |
+          git clone --depth=1 https://github.com/MiCode/Xiaomi_Kernel_OpenSource.git -b pine-q-oss kernel || \
+          git clone --depth=1 https://github.com/Ratoriku/kernel_xiaomi_sdm439.git kernel
+
+      - name: Integrate KernelSU-Next
+        run: |
+          cd kernel
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           echo "CONFIG_KSU=y" >> arch/arm64/configs/vendor/mi439-stock_defconfig
           echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/vendor/mi439-stock_defconfig
 
       - name: Compile Kernel
         run: |
+          cd kernel
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           make O=out ARCH=arm64 vendor/mi439-stock_defconfig
-          make -j$(nproc --all) O=out             ARCH=arm64             CC=clang             CROSS_COMPILE=aarch64-linux-gnu-             CROSS_COMPILE_ARM32=arm-linux-gnueabi-             AR=llvm-ar             NM=llvm-nm             OBJCOPY=llvm-objcopy             OBJDUMP=llvm-objdump             STRIP=llvm-strip
+          make -j$(nproc --all) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip
 
       - name: Package AnyKernel3
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
           sed -i 's|block=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;|block=auto;|g' AnyKernel3/anykernel.sh
-          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          elif [ -f out/arch/arm64/boot/Image.gz ]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/
+          
+          if [ -f kernel/out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          elif [ -f kernel/out/arch/arm64/boot/Image.gz ]; then
+            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
           else
-            cp out/arch/arm64/boot/Image AnyKernel3/
+            cp kernel/out/arch/arm64/boot/Image AnyKernel3/
           fi
+          
           cd AnyKernel3
-          zip -r9 ../Kernel-KSU-4.19.zip * -x .git README.md *placeholder
+          zip -r9 ../Kernel-KSU-mi439.zip * -x .git README.md *placeholder
 
-      - name: Upload Flashable ZIP
+      - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel-KSU-Flashable
-          path: Kernel-KSU-4.19.zip
+          name: Kernel-KSU-mi439
+          path: Kernel-KSU-mi439.zip
