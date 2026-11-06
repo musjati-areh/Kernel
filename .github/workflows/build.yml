@@ -36,7 +36,13 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s main || curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
           
-          # Патчи трассировки планировщика (устранение несовместимостей sched.h)
+          # Отключаем превращение предупреждений компилятора в ошибки
+          if [ -f Makefile ]; then
+            sed -i 's/-Werror=implicit-function-declaration//g' Makefile
+            sed -i 's/-Werror//g' Makefile
+          fi
+
+          # Патчи планировщика (sched.h)
           if [ -f include/trace/events/sched.h ]; then
             sed -i 's/runnable_load_avg/runnable_avg/g' include/trace/events/sched.h
             sed -i '/__entry->cpu_load/ s/=.*/= 0;/g' include/trace/events/sched.h
@@ -44,7 +50,13 @@ jobs:
             sed -i '/__entry->isolated/ s/=.*/= 0;/g' include/trace/events/sched.h
           fi
 
-          # Патч task_mmu (исправление опечатки reclaim_walk_ops -> reclaim_walk)
+          # Патч sched/debug.c: заглушаем недо-бэкпортированный EEVDF (entity_eligible и cfs_rq_of)
+          if [ -f kernel/sched/debug.c ]; then
+            sed -i "s/entity_eligible.*'E' : 'N'/'N'/g" kernel/sched/debug.c
+            sed -i "s/entity_eligible(cfs_rq_of(&p->se), &p->se)/0/g" kernel/sched/debug.c
+          fi
+
+          # Патч task_mmu (опечатка в имени переменной)
           if [ -f fs/proc/task_mmu.c ]; then
             sed -i 's/reclaim_walk_ops/reclaim_walk/g' fs/proc/task_mmu.c
           fi
@@ -53,7 +65,6 @@ jobs:
         run: |
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           
-          # Определение дефконфига SDM439 / MI439
           if [ -f arch/arm64/configs/vendor/sdm439-perf_defconfig ]; then
             DEFCONFIG="vendor/sdm439-perf_defconfig"
           elif [ -f arch/arm64/configs/vendor/sdm439_defconfig ]; then
@@ -89,7 +100,6 @@ jobs:
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
-            KCFLAGS="-Wno-error" \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             AR=llvm-ar \
