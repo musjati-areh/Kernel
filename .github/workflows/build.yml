@@ -36,16 +36,6 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           
-          # Патчи планировщика
-          if [ -f include/trace/events/sched.h ]; then
-            sed -i 's/runnable_load_avg/runnable_avg/g' include/trace/events/sched.h
-            sed -i '/__entry->cpu_load/ s/=.*/= 0;/g' include/trace/events/sched.h
-            sed -i 's/task_rq(p)->cpu_load\[[0-9]*\]/0/g' include/trace/events/sched.h
-            sed -i 's/task_rq(p)->cpu_load/0/g' include/trace/events/sched.h
-            sed -i 's/rq->cpu_load\[[0-9]*\]/0/g' include/trace/events/sched.h
-            sed -i 's/rq->cpu_load/0/g' include/trace/events/sched.h
-          fi
-
           # Патч task_mmu (исправление опечатки reclaim_walk_ops -> reclaim_walk)
           if [ -f fs/proc/task_mmu.c ]; then
             sed -i 's/reclaim_walk_ops/reclaim_walk/g' fs/proc/task_mmu.c
@@ -55,21 +45,29 @@ jobs:
         run: |
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           
-          if [ -f arch/arm64/configs/lolz_defconfig ]; then
-            DEFCONFIG="lolz_defconfig"
-          elif [ -f arch/arm64/configs/vendor/lolz_defconfig ]; then
-            DEFCONFIG="vendor/lolz_defconfig"
+          # Автоопределение дефконфига SDM439 / MI439
+          if [ -f arch/arm64/configs/vendor/sdm439-perf_defconfig ]; then
+            DEFCONFIG="vendor/sdm439-perf_defconfig"
+          elif [ -f arch/arm64/configs/vendor/sdm439_defconfig ]; then
+            DEFCONFIG="vendor/sdm439_defconfig"
+          elif [ -f arch/arm64/configs/sdm439-perf_defconfig ]; then
+            DEFCONFIG="sdm439-perf_defconfig"
           elif [ -f arch/arm64/configs/vendor/mi439-perf_defconfig ]; then
             DEFCONFIG="vendor/mi439-perf_defconfig"
+          elif [ -f arch/arm64/configs/lolz_defconfig ]; then
+            DEFCONFIG="lolz_defconfig"
           else
-            DEFCONFIG="vendor/mi439-stock_defconfig"
-            if [ -f arch/arm64/configs/vendor/xiaomi-sdm439.config ]; then
-              cat arch/arm64/configs/vendor/xiaomi-sdm439.config >> arch/arm64/configs/vendor/mi439-stock_defconfig
-            fi
+            DEFCONFIG=$(find arch/arm64/configs -name "*439*" | head -n 1 | sed 's|arch/arm64/configs/||')
           fi
           
           echo "Using defconfig: $DEFCONFIG"
+
+          # Если есть оверлей конфигурации xiaomi, объединяем его с базовым конфигом
+          if [ -f arch/arm64/configs/vendor/xiaomi-sdm439.config ]; then
+            cat arch/arm64/configs/vendor/xiaomi-sdm439.config >> arch/arm64/configs/$DEFCONFIG
+          fi
           
+          # Опции KernelSU и исправления
           cat << 'EOF' >> arch/arm64/configs/$DEFCONFIG
           CONFIG_KSU=y
           CONFIG_OVERLAY_FS=y
@@ -85,7 +83,6 @@ jobs:
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
-            KCFLAGS="-Wno-error -Wno-implicit-function-declaration" \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             AR=llvm-ar \
