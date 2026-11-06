@@ -14,11 +14,11 @@ jobs:
       - name: Checkout Workflow & Sources
         uses: actions/checkout@v4
 
-      - name: Install Toolchains & Dependencies
+      - name: Install Fast Dependencies
         run: |
           sudo apt-get update -y
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            libelf-dev libssl-dev bc bison flex zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi python3 cpio
+            libelf-dev libssl-dev bc bison flex zip python3 cpio
 
       - name: Restore Proton Clang Cache
         id: cache-clang
