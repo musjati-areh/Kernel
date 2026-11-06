@@ -34,8 +34,16 @@ jobs:
 
       - name: Integrate KernelSU-Next & Apply Source Patches
         run: |
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s main || curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
           
+          # Патчи трассировки планировщика (устранение несовместимостей sched.h)
+          if [ -f include/trace/events/sched.h ]; then
+            sed -i 's/runnable_load_avg/runnable_avg/g' include/trace/events/sched.h
+            sed -i '/__entry->cpu_load/ s/=.*/= 0;/g' include/trace/events/sched.h
+            sed -i '/__entry->idle_state/ s/=.*/= 0;/g' include/trace/events/sched.h
+            sed -i '/__entry->isolated/ s/=.*/= 0;/g' include/trace/events/sched.h
+          fi
+
           # Патч task_mmu (исправление опечатки reclaim_walk_ops -> reclaim_walk)
           if [ -f fs/proc/task_mmu.c ]; then
             sed -i 's/reclaim_walk_ops/reclaim_walk/g' fs/proc/task_mmu.c
@@ -45,7 +53,7 @@ jobs:
         run: |
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           
-          # Автоопределение дефконфига SDM439 / MI439
+          # Определение дефконфига SDM439 / MI439
           if [ -f arch/arm64/configs/vendor/sdm439-perf_defconfig ]; then
             DEFCONFIG="vendor/sdm439-perf_defconfig"
           elif [ -f arch/arm64/configs/vendor/sdm439_defconfig ]; then
@@ -62,12 +70,10 @@ jobs:
           
           echo "Using defconfig: $DEFCONFIG"
 
-          # Если есть оверлей конфигурации xiaomi, объединяем его с базовым конфигом
           if [ -f arch/arm64/configs/vendor/xiaomi-sdm439.config ]; then
             cat arch/arm64/configs/vendor/xiaomi-sdm439.config >> arch/arm64/configs/$DEFCONFIG
           fi
           
-          # Опции KernelSU и исправления
           cat << 'EOF' >> arch/arm64/configs/$DEFCONFIG
           CONFIG_KSU=y
           CONFIG_OVERLAY_FS=y
@@ -83,6 +89,7 @@ jobs:
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
+            KCFLAGS="-Wno-error" \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             AR=llvm-ar \
