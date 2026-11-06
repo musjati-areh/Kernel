@@ -46,12 +46,6 @@ jobs:
             sed -i 's/rq->cpu_load/0/g' include/trace/events/sched.h
           fi
 
-          # Патч трассировки EROFS
-          if [ -f include/trace/events/erofs.h ]; then
-            sed -i 's/__assign_str(name,.*);/__assign_str(name, "");/g' include/trace/events/erofs.h || true
-            sed -i 's/__entry->name/""/g' include/trace/events/erofs.h || true
-          fi
-
       - name: Compile Kernel
         run: |
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
@@ -75,6 +69,7 @@ jobs:
           CONFIG_KSU=y
           CONFIG_OVERLAY_FS=y
           CONFIG_WERROR=n
+          CONFIG_EROFS_FS=n
           CONFIG_EROFS_FS_DEBUG=n
           EOF
 
