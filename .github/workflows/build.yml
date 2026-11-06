@@ -1,0 +1,25 @@
+name: Build Kernel 4.19 with KernelSU
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison ca-certificates curl flex gcc git libc6-dev \
+            libssl-dev make python3 libelf-dev zip libarchive-tools
