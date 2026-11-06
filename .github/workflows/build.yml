@@ -32,20 +32,24 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: Integrate KernelSU-Next & Patch Sched
+      - name: Integrate KernelSU-Next & Apply Source Patches
         run: |
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           
-          # Патчи планировщика для LOLZ Kernel 4.19
+          # Патчи планировщика
           if [ -f include/trace/events/sched.h ]; then
-            # 1. Исправление runnable_load_avg -> runnable_avg
             sed -i 's/runnable_load_avg/runnable_avg/g' include/trace/events/sched.h
-            # 2. Исправление ошибки no member named 'cpu_load' in 'struct rq'
             sed -i '/__entry->cpu_load/ s/=.*/= 0;/g' include/trace/events/sched.h
             sed -i 's/task_rq(p)->cpu_load\[[0-9]*\]/0/g' include/trace/events/sched.h
             sed -i 's/task_rq(p)->cpu_load/0/g' include/trace/events/sched.h
             sed -i 's/rq->cpu_load\[[0-9]*\]/0/g' include/trace/events/sched.h
             sed -i 's/rq->cpu_load/0/g' include/trace/events/sched.h
+          fi
+
+          # Патч трассировки EROFS
+          if [ -f include/trace/events/erofs.h ]; then
+            sed -i 's/__assign_str(name,.*);/__assign_str(name, "");/g' include/trace/events/erofs.h || true
+            sed -i 's/__entry->name/""/g' include/trace/events/erofs.h || true
           fi
 
       - name: Compile Kernel
@@ -71,6 +75,7 @@ jobs:
           CONFIG_KSU=y
           CONFIG_OVERLAY_FS=y
           CONFIG_WERROR=n
+          CONFIG_EROFS_FS_DEBUG=n
           EOF
 
           make O=out ARCH=arm64 CC=clang $DEFCONFIG
