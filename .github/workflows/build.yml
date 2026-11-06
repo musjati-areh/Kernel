@@ -46,6 +46,11 @@ jobs:
             sed -i 's/rq->cpu_load/0/g' include/trace/events/sched.h
           fi
 
+          # Патч task_mmu (исправление опечатки reclaim_walk_ops -> reclaim_walk)
+          if [ -f fs/proc/task_mmu.c ]; then
+            sed -i 's/reclaim_walk_ops/reclaim_walk/g' fs/proc/task_mmu.c
+          fi
+
       - name: Compile Kernel
         run: |
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
